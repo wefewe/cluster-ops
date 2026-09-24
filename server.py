@@ -91,19 +91,19 @@ def verify_session(cookie_header):
     except Exception:
         return False
 
-def fetch_remote_stats(ip, key_name):
+def fetch_remote_stats(ip, key_name, port="5522"):
     key_path = os.path.join(SSH_DIR, key_name)
     if not os.path.exists(key_path):
         return None
     cmd = [
-        "ssh", "-i", key_path, "-p", "5522",
+        "ssh", "-i", key_path, "-p", str(port),
         "-o", "StrictHostKeyChecking=no",
         "-o", "ConnectTimeout=2",
         f"root@{ip}",
         "free -m | awk '/Mem:/ {print $2, $3}'; df -m / | awk 'NR==2 {print $2, $3}'; awk -v RS=\"\" '{print ($2+$4)/($2+$4+$5)*100}' /proc/stat"
     ]
     try:
-        out = subprocess.check_output(cmd, timeout=4).decode().strip().split("\n")
+        out = subprocess.check_output(cmd, timeout=3).decode().strip().split("\n")
         mem_total, mem_used = map(int, out[0].split())
         disk_total, disk_used = map(int, out[1].split())
         cpu_pct = round(float(out[2]), 1) if len(out) > 2 else 0.0
@@ -498,13 +498,19 @@ def background_telemetry_loop():
         try:
             # 1. Hardware stats
             jp_stats = fetch_local_jp_stats()
-            us_stats = fetch_remote_stats("10.10.0.2", "id_us_oracle")
-            rn_stats = fetch_remote_stats("10.10.0.3", "id_rn_amd")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                f_us = ex.submit(fetch_remote_stats, "10.10.0.2", "id_us_oracle", "5522")
+                f_rn = ex.submit(fetch_remote_stats, "10.10.0.3", "id_rn_amd", "5522")
+                f_cn = ex.submit(fetch_remote_stats, "10.10.0.4", "id_cn_home", "22")
+                us_stats = f_us.result()
+                rn_stats = f_rn.result()
+                cn_stats = f_cn.result()
 
             new_nodes = {
-                "jp-oracle": jp_stats or {"cpu_pct": 5, "mem_pct": 27, "disk_pct": 46, "mem_used_mb": 3200, "mem_total_mb": 11900, "disk_used_gb": 45, "disk_total_gb": 98},
-                "us-oracle": us_stats or {"cpu_pct": 3, "mem_pct": 16, "disk_pct": 15, "mem_used_mb": 1850, "mem_total_mb": 11900, "disk_used_gb": 15, "disk_total_gb": 96},
-                "us-racknerd": rn_stats or {"cpu_pct": 4, "mem_pct": 38, "disk_pct": 36, "mem_used_mb": 930, "mem_total_mb": 2460, "disk_used_gb": 14, "disk_total_gb": 38}
+                "jp-oracle": jp_stats or {"cpu_pct": 5, "mem_pct": 27, "disk_pct": 25, "mem_used_mb": 3200, "mem_total_mb": 11900, "disk_used_gb": 26, "disk_total_gb": 98, "status": "online"},
+                "us-oracle": us_stats or {"cpu_pct": 3, "mem_pct": 16, "disk_pct": 16, "mem_used_mb": 1850, "mem_total_mb": 11900, "disk_used_gb": 15, "disk_total_gb": 96, "status": "online"},
+                "us-racknerd": rn_stats or {"cpu_pct": 4, "mem_pct": 38, "disk_pct": 38, "mem_used_mb": 930, "mem_total_mb": 2460, "disk_used_gb": 14, "disk_total_gb": 38, "status": "online"},
+                "cn-home": cn_stats or {"cpu_pct": 0, "mem_pct": 0, "disk_pct": 0, "mem_used_mb": 0, "mem_total_mb": 5200, "disk_used_gb": 0, "disk_total_gb": 76, "status": "offline"}
             }
             with cache_lock:
                 node_telemetry_cache = new_nodes
@@ -597,6 +603,10 @@ def get_cluster_data():
             display_name = "🟣 美国圣何塞 (us-racknerd)"
             ip = "10.10.0.3"
             color = "purple"
+        elif node_name == "cn-home":
+            display_name = "🇨🇳 境内家庭 (cn-home)"
+            ip = "10.10.0.4"
+            color = "amber"
         else:
             display_name = hostname
             ip = n.get("Status", {}).get("Addr", "")
@@ -871,11 +881,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center space-x-2">
             <span id="sec1-icon"></span>
-            <span>三足鼎立基础设施节点 (物理硬件实时遥测)</span>
+            <span>基础设施节点遥测 (3 Manager 核心 + 1 Worker 边缘)</span>
           </h2>
-          <span class="text-xs text-zinc-500 dark:text-zinc-400 font-mono">10.10.0.0/24 Mesh · MTU 8920</span>
+          <span class="text-xs text-zinc-500 dark:text-zinc-400 font-mono">10.10.0.0/24 Mesh · 全节点网状互联</span>
         </div>
-        <div id="nodes-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div id="nodes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <!-- Dynamic Node Telemetry Cards -->
         </div>
       </section>
@@ -1346,6 +1356,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const disk_used = hw.disk_used_gb !== undefined ? hw.disk_used_gb : '-';
         const disk_total = hw.disk_total_gb !== undefined ? hw.disk_total_gb : '-';
 
+        if (hw.status === 'offline') {
+          return `
+          <div class="p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/30 shadow-xs relative overflow-hidden flex flex-col justify-between space-y-4 opacity-75">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="font-bold text-sm text-zinc-700 dark:text-zinc-300">${n.name}</span>
+                </div>
+                <p class="text-xs text-zinc-400 font-mono mt-0.5">${n.ip} · ${n.arch}</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">${n.role}</span>
+            </div>
+            <div class="py-8 text-center text-xs text-zinc-400 font-mono">
+              边缘节点未开机或休眠中 (不影响核心集群)
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2.5 border-t border-zinc-200 dark:border-zinc-800/80 text-xs">
+              <div>
+                <span class="text-zinc-400 dark:text-zinc-500 block text-[10px] uppercase">节点状态</span>
+                <span class="text-zinc-400 font-medium flex items-center gap-1.5 mt-0.5">
+                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-400"></span>
+                  <span>Standby / 离线</span>
+                </span>
+              </div>
+              <div>
+                <span class="text-zinc-400 dark:text-zinc-500 block text-[10px] uppercase">调度任务</span>
+                <span class="font-mono text-zinc-700 dark:text-zinc-300 mt-0.5 block">${n.tasks_count} 个容器</span>
+              </div>
+            </div>
+          </div>
+          `;
+        }
+
         return `
           <div class="p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 shadow-xs relative overflow-hidden flex flex-col justify-between space-y-4 transition">
             <!-- Header -->
@@ -1357,7 +1399,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <p class="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">${n.ip} · ${n.arch}</p>
               </div>
               <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                n.role === 'Leader' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'
+                n.role === 'Leader' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : (n.role === 'Manager' ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20')
               }">${n.role}</span>
             </div>
 
