@@ -510,7 +510,7 @@ def background_telemetry_loop():
                 "jp-oracle": jp_stats or {"cpu_pct": 5, "mem_pct": 27, "disk_pct": 25, "mem_used_mb": 3200, "mem_total_mb": 11900, "disk_used_gb": 26, "disk_total_gb": 98, "status": "online"},
                 "us-oracle": us_stats or {"cpu_pct": 3, "mem_pct": 16, "disk_pct": 16, "mem_used_mb": 1850, "mem_total_mb": 11900, "disk_used_gb": 15, "disk_total_gb": 96, "status": "online"},
                 "us-racknerd": rn_stats or {"cpu_pct": 4, "mem_pct": 38, "disk_pct": 38, "mem_used_mb": 930, "mem_total_mb": 2460, "disk_used_gb": 14, "disk_total_gb": 38, "status": "online"},
-                "cn-home": cn_stats or {"cpu_pct": 0, "mem_pct": 0, "disk_pct": 0, "mem_used_mb": 0, "mem_total_mb": 5200, "disk_used_gb": 0, "disk_total_gb": 76, "status": "offline"}
+                "cn-home": cn_stats or {"cpu_pct": 0, "mem_pct": 0, "disk_pct": 0, "mem_used_mb": 0, "mem_total_mb": 1650, "disk_used_gb": 0, "disk_total_gb": 76, "status": "offline"}
             }
             with cache_lock:
                 node_telemetry_cache = new_nodes
