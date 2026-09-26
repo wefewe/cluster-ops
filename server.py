@@ -785,13 +785,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <style>
     @keyframes pulse-subtle { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     .animate-pulse-subtle { animation: pulse-subtle 3s infinite; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    @keyframes floaty { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(0,-16px,0) scale(1.04); } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fadeUp .45s cubic-bezier(.22,1,.36,1) both; }
+    .hover-lift { transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease; }
+    .hover-lift:hover { transform: translateY(-3px); box-shadow: 0 14px 34px -16px rgba(24,24,27,.4); }
+    .dark .hover-lift:hover { box-shadow: 0 18px 44px -16px rgba(99,102,241,.4); border-color: rgba(99,102,241,.35); }
+    #bg-aura { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+    #bg-aura .blob { position: absolute; border-radius: 9999px; filter: blur(90px); opacity: .5; animation: floaty 18s ease-in-out infinite; }
+    .dark #bg-aura .blob { opacity: .34; }
+    .grid-veil { position: absolute; inset: 0;
+      background-image: linear-gradient(to right, rgba(120,120,140,.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(120,120,140,.06) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(ellipse 85% 55% at 50% 0%, #000 35%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 85% 55% at 50% 0%, #000 35%, transparent 100%);
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(161, 161, 170, 0.2); border-radius: 9999px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(161, 161, 170, 0.4); }
+    ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(99,102,241,.38), rgba(99,102,241,.16)); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,.6); }
   </style>
 </head>
 <body class="bg-zinc-50 text-zinc-900 dark:bg-[#09090b] dark:text-zinc-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white transition-colors duration-200">
+
+  <!-- AMBIENT BACKGROUND (subtle aurora + grid veil) -->
+  <div id="bg-aura" aria-hidden="true">
+    <div class="grid-veil"></div>
+    <div class="blob" style="width:420px;height:420px;left:-90px;top:-120px;background:#6366f1;animation-delay:0s"></div>
+    <div class="blob" style="width:360px;height:360px;right:-70px;top:60px;background:#0ea5e9;animation-delay:2.5s"></div>
+    <div class="blob" style="width:340px;height:340px;left:38%;bottom:-150px;background:#10b981;animation-delay:5s"></div>
+  </div>
 
   <!-- TOAST NOTIFICATION -->
   <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
@@ -1190,7 +1213,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('cockpit-bar').innerHTML = `
       <span class="text-zinc-400 dark:text-zinc-500 font-semibold text-[11px] uppercase mr-1 tracking-wider whitespace-nowrap">极速直达:</span>
       ${COCKPIT_ITEMS.map(item => `
-        <a href="${item.url}" target="_blank" class="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition flex items-center space-x-1.5 whitespace-nowrap shadow-2xs group">
+        <a href="${item.url}" target="_blank" class="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-500/10 flex items-center space-x-1.5 whitespace-nowrap shadow-2xs group">
           <span class="${item.color} transition group-hover:scale-110 inline-block">${icon(item.icon, 'w-3.5 h-3.5')}</span>
           <span class="font-medium">${item.name}</span>
         </a>
@@ -1399,7 +1422,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const disk_total = hw.disk_total_gb !== undefined ? hw.disk_total_gb : '-';
 
           return `
-            <div class="p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 shadow-xs relative overflow-hidden flex flex-col justify-between space-y-4 transition hover:border-zinc-300 dark:hover:border-zinc-700">
+            <div class="hover-lift p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 shadow-xs relative overflow-hidden flex flex-col justify-between space-y-4">
               <div class="flex items-start justify-between">
                 <div>
                   <div class="flex items-center space-x-2">
@@ -1482,7 +1505,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const disk_total = hw.disk_total_gb !== undefined ? hw.disk_total_gb : '-';
 
           return `
-            <div class="p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 shadow-xs relative overflow-hidden transition">
+            <div class="hover-lift p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 shadow-xs relative overflow-hidden">
               <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800/80">
                 <div class="flex items-center space-x-3">
                   <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 text-lg flex-shrink-0">
@@ -1552,26 +1575,42 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const sum = data.summary;
       const isAutoHealthy = sum.auto_healthy;
       document.getElementById('summary-cards').innerHTML = `
-        <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
-          <span class="text-zinc-500 dark:text-zinc-400">Swarm 管理仲裁</span>
+        <div class="hover-lift fade-up p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs relative overflow-hidden">
+          <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-emerald-400/80 via-emerald-500/30 to-transparent"></div>
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-500 dark:text-zinc-400">Swarm 管理仲裁</span>
+            <span class="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">${icon('shield', 'w-3.5 h-3.5')}</span>
+          </div>
           <p class="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">${sum.nodes_online}</p>
           <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">${sum.quorum_status}</span>
         </div>
-        <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
-          <span class="text-zinc-500 dark:text-zinc-400">活跃微服务</span>
+        <div class="hover-lift fade-up p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs relative overflow-hidden" style="animation-delay:.06s">
+          <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-indigo-400/80 via-indigo-500/30 to-transparent"></div>
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-500 dark:text-zinc-400">活跃微服务</span>
+            <span class="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500">${icon('server', 'w-3.5 h-3.5')}</span>
+          </div>
           <p class="text-base font-bold text-zinc-900 dark:text-white mt-1">${sum.services_count} 个微服务</p>
           <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">${sum.stacks_count} 个 Swarm 业务栈</span>
         </div>
-        <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
+        <div class="hover-lift fade-up p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs relative overflow-hidden" style="animation-delay:.12s">
+          <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-amber-400/80 via-amber-500/30 to-transparent"></div>
           <div class="flex items-center justify-between">
             <span class="text-zinc-500 dark:text-zinc-400">自动化与容灾中枢</span>
-            <span class="w-1.5 h-1.5 rounded-full ${isAutoHealthy ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}"></span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-6 h-6 rounded-lg bg-zinc-500/10 border border-zinc-500/20 flex items-center justify-center text-zinc-500">${icon('zap', 'w-3.5 h-3.5')}</span>
+              <span class="w-1.5 h-1.5 rounded-full ${isAutoHealthy ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}"></span>
+            </span>
           </div>
           <p class="text-base font-bold ${isAutoHealthy ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'} mt-1">${isAutoHealthy ? '全链路健康' : '需注意'}</p>
           <span class="text-[10px] text-zinc-400 dark:text-zinc-500">6/6 备份鲜活 · 巡检全绿 · AI管家</span>
         </div>
-        <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
-          <span class="text-zinc-500 dark:text-zinc-400">公网服务路由</span>
+        <div class="hover-lift fade-up p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs relative overflow-hidden" style="animation-delay:.18s">
+          <div class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-sky-400/80 via-sky-500/30 to-transparent"></div>
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-500 dark:text-zinc-400">公网服务路由</span>
+            <span class="w-6 h-6 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500">${icon('globe', 'w-3.5 h-3.5')}</span>
+          </div>
           <p class="text-base font-bold text-blue-600 dark:text-blue-400 mt-1">${sum.routes_count} 个域名映射</p>
           <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">${sum.ssl_validity}</span>
         </div>
