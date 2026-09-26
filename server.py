@@ -729,19 +729,24 @@ def get_cluster_data():
     agent_ok = bool(automation.get("agent", {}).get("active"))
     auto_healthy = bak_all_ok and guard_ok and agent_ok
 
+    mgr_online = sum(1 for n in node_stats.values() if n.get("role") in ["Leader", "Manager"] and n.get("status") == "ready")
+    mgr_total = sum(1 for n in node_stats.values() if n.get("role") in ["Leader", "Manager"])
+    total_online = sum(1 for n in node_stats.values() if n.get("status") == "ready")
+    total_nodes = len(node_stats)
+
     return {
         "nodes": list(node_stats.values()),
         "routes": routes_list,
         "standalones": standalones,
         "automation": automation,
         "summary": {
-            "nodes_online": f"{len(node_map)}/3",
-            "quorum_status": "Quorum Healthy (3 Managers)",
+            "nodes_online": f"{mgr_online}/{mgr_total} 仲裁就绪",
+            "quorum_status": f"Quorum 健全 · 全节点 {total_online}/{total_nodes} 在线",
             "stacks_count": len(set(s.get("Spec", {}).get("Labels", {}).get("com.docker.stack.namespace", "") for s in services if s.get("Spec", {}).get("Labels", {}).get("com.docker.stack.namespace"))),
             "services_count": len(services),
             "standalone_count": total_standalone,
             "routes_count": len(routes_list),
-            "ssl_validity": "2041-09-14 (15 Years)",
+            "ssl_validity": "CF Full (Strict) · 源站 Origin CA (15年)",
             "auto_healthy": auto_healthy
         }
     }
@@ -1549,7 +1554,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       document.getElementById('summary-cards').innerHTML = `
         <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
           <span class="text-zinc-500 dark:text-zinc-400">Swarm 管理仲裁</span>
-          <p class="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">${sum.nodes_online} 在线</p>
+          <p class="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">${sum.nodes_online}</p>
           <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">${sum.quorum_status}</span>
         </div>
         <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
@@ -1568,7 +1573,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 text-xs shadow-xs">
           <span class="text-zinc-500 dark:text-zinc-400">公网服务路由</span>
           <p class="text-base font-bold text-blue-600 dark:text-blue-400 mt-1">${sum.routes_count} 个域名映射</p>
-          <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">Full (Strict) 至 ${sum.ssl_validity}</span>
+          <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">${sum.ssl_validity}</span>
         </div>
       `;
 
