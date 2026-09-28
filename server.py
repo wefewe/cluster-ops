@@ -95,18 +95,15 @@ def fetch_remote_stats(ip, key_name, port="5522"):
     key_path = os.path.join(SSH_DIR, key_name)
     if not os.path.exists(key_path):
         return None
-    is_edge = (ip == "10.10.0.4")
-    c_timeout = "5" if is_edge else "2"
-    t_timeout = 8 if is_edge else 4
     cmd = [
         "ssh", "-i", key_path, "-p", str(port),
         "-o", "StrictHostKeyChecking=no",
-        "-o", f"ConnectTimeout={c_timeout}",
+        "-o", "ConnectTimeout=2",
         f"root@{ip}",
         "free -m | awk '/Mem:/ {print $2, $3}'; df -m / | awk 'NR==2 {print $2, $3}'; awk -v RS=\"\" '{print ($2+$4)/($2+$4+$5)*100}' /proc/stat"
     ]
     try:
-        out = subprocess.check_output(cmd, timeout=t_timeout).decode().strip().split("\n")
+        out = subprocess.check_output(cmd, timeout=4).decode().strip().split("\n")
         mem_total, mem_used = map(int, out[0].split())
         disk_total, disk_used = map(int, out[1].split())
         cpu_pct = round(float(out[2]), 1) if len(out) > 2 else 0.0
@@ -501,26 +498,16 @@ def background_telemetry_loop():
         try:
             # 1. Hardware stats
             jp_stats = fetch_local_jp_stats()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
                 f_us = ex.submit(fetch_remote_stats, "10.10.0.2", "id_us_oracle", "5522")
                 f_rn = ex.submit(fetch_remote_stats, "10.10.0.3", "id_rn_amd", "5522")
-                f_cn = ex.submit(fetch_remote_stats, "10.10.0.4", "id_cn_home", "22")
                 us_stats = f_us.result()
                 rn_stats = f_rn.result()
-                cn_stats = f_cn.result()
-
-            if cn_stats:
-                last_cn_stats = cn_stats
-                last_cn_time = time.time()
-            elif 'last_cn_stats' in locals() and last_cn_stats and (time.time() - last_cn_time < 300):
-                cn_stats = last_cn_stats.copy()
-                cn_stats["status"] = "online"
 
             new_nodes = {
                 "jp-oracle": jp_stats or {"cpu_pct": 5, "mem_pct": 27, "disk_pct": 25, "mem_used_mb": 3200, "mem_total_mb": 11900, "disk_used_gb": 26, "disk_total_gb": 98, "status": "online"},
                 "us-oracle": us_stats or {"cpu_pct": 3, "mem_pct": 16, "disk_pct": 16, "mem_used_mb": 1850, "mem_total_mb": 11900, "disk_used_gb": 15, "disk_total_gb": 96, "status": "online"},
-                "us-racknerd": rn_stats or {"cpu_pct": 4, "mem_pct": 38, "disk_pct": 38, "mem_used_mb": 930, "mem_total_mb": 2460, "disk_used_gb": 14, "disk_total_gb": 38, "status": "online"},
-                "cn-home": cn_stats or {"cpu_pct": 0, "mem_pct": 0, "disk_pct": 0, "mem_used_mb": 0, "mem_total_mb": 6144, "disk_used_gb": 0, "disk_total_gb": 76, "status": "offline"}
+                "us-racknerd": rn_stats or {"cpu_pct": 4, "mem_pct": 38, "disk_pct": 38, "mem_used_mb": 930, "mem_total_mb": 2460, "disk_used_gb": 14, "disk_total_gb": 38, "status": "online"}
             }
             with cache_lock:
                 node_telemetry_cache = new_nodes
@@ -613,10 +600,6 @@ def get_cluster_data():
             display_name = "🟣 美国圣何塞 (us-racknerd)"
             ip = "10.10.0.3"
             color = "purple"
-        elif node_name == "cn-home":
-            display_name = "🇨🇳 境内家庭 (cn-home)"
-            ip = "10.10.0.4"
-            color = "amber"
         else:
             display_name = hostname
             ip = n.get("Status", {}).get("Addr", "")
@@ -936,17 +919,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- 边缘混合内网接入节点 (Edge Worker Mesh) -->
-        <div class="pt-1">
+        <!-- 边缘混合内网接入节点 (Edge Worker Mesh, 仅在存在边缘节点时显示) -->
+        <div id="edge-section" class="pt-1 hidden">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center space-x-2">
               <span class="text-amber-500 text-sm">🏠</span>
               <span class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">边缘混合接入节点 (Edge Worker Mesh)</span>
             </div>
-            <span class="text-[11px] text-zinc-400 font-mono">WireGuard 专线 ➔ US-RackNerd 圣何塞中继 (~340ms RTT)</span>
+            <span class="text-[11px] text-zinc-400 font-mono">WireGuard 专线接入</span>
           </div>
           <div id="edge-nodes-grid">
-            <!-- cn-home 专属宽幅卡片 -->
+            <!-- 边缘节点卡片 -->
           </div>
         </div>
       </section>
@@ -1408,6 +1391,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const coreNodes = data.nodes.filter(n => n.role === 'Leader' || n.role === 'Manager');
       const edgeNodes = data.nodes.filter(n => n.role !== 'Leader' && n.role !== 'Manager');
 
+      // Toggle edge section: only show when edge nodes exist
+      const edgeSection = document.getElementById('edge-section');
+      if (edgeSection) edgeSection.classList.toggle('hidden', edgeNodes.length === 0);
+
       // 1. Render Core Cloud Quorum Nodes (3 Columns)
       const coreContainer = document.getElementById('core-nodes-grid');
       if (coreContainer) {
@@ -1490,7 +1477,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }).join('');
       }
 
-      // 2. Render Edge Worker Node (cn-home)
+      // 2. Render Edge Worker Nodes (if any)
       const edgeContainer = document.getElementById('edge-nodes-grid');
       if (edgeContainer && edgeNodes.length > 0) {
         edgeContainer.innerHTML = edgeNodes.map(n => {
