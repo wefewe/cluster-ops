@@ -1194,7 +1194,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     ];
 
     document.getElementById('cockpit-bar').innerHTML = `
-      <span class="text-zinc-400 dark:text-zinc-500 font-semibold text-[11px] uppercase mr-1 tracking-wider whitespace-nowrap">极速直达:</span>
+      <span class="w-full text-zinc-400 dark:text-zinc-500 font-semibold text-[11px] uppercase tracking-wider whitespace-nowrap">极速直达:</span>
       ${COCKPIT_ITEMS.map(item => `
         <a href="${item.url}" target="_blank" class="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-500/10 flex items-center space-x-1.5 whitespace-nowrap shadow-2xs group">
           <span class="${item.color} transition group-hover:scale-110 inline-block">${icon(item.icon, 'w-3.5 h-3.5')}</span>
