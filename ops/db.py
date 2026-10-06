@@ -2,6 +2,7 @@
 import os
 import sqlite3
 import threading
+import time
 
 _db_lock = threading.Lock()
 
@@ -61,6 +62,12 @@ def init_db():
                 )"""
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status)")
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS token_usage (
+                    name TEXT PRIMARY KEY,
+                    last_used INTEGER NOT NULL DEFAULT 0
+                )"""
+            )
             conn.commit()
         finally:
             conn.close()
@@ -183,5 +190,42 @@ def update_approval(approval_id, fields):
                 f"UPDATE approvals SET {', '.join(sets)} WHERE id = ?", values
             )
             conn.commit()
+        finally:
+            conn.close()
+
+
+TOKEN_TOUCH_INTERVAL = 60  # seconds: at most one usage write per token per minute
+
+
+def touch_token(name):
+    """Record a token use, throttled to one write per minute. Best-effort."""
+    now = int(time.time())
+    with _db_lock:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT last_used FROM token_usage WHERE name = ?", (name,)
+            ).fetchone()
+            if row and now - row["last_used"] < TOKEN_TOUCH_INTERVAL:
+                return
+            conn.execute(
+                """INSERT INTO token_usage (name, last_used) VALUES (?, ?)
+                   ON CONFLICT(name) DO UPDATE SET last_used = excluded.last_used""",
+                (name, now),
+            )
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+
+def list_token_usage():
+    """{name: last_used} for all tracked tokens."""
+    with _db_lock:
+        conn = _connect()
+        try:
+            rows = conn.execute("SELECT name, last_used FROM token_usage").fetchall()
+            return {r["name"]: r["last_used"] for r in rows}
         finally:
             conn.close()
