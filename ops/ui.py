@@ -1870,7 +1870,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     window.copyRotateCmd = function() {
       const cmd = 'sudo /usr/local/bin/ops-token-rotate.sh';
-      const done = () => alert('已复制：' + cmd + '\n在服务器上执行以轮换两个 token（需维护锁）。');
+      const done = () => alert('已复制轮换命令（服务器上执行，需维护锁）：' + cmd);
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(cmd).then(done).catch(() => prompt('复制此命令：', cmd));
       } else {
