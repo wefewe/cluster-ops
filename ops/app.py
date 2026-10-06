@@ -6,10 +6,41 @@ import os
 import time
 import urllib.parse
 
-from .auth import sign_session, verify_session
+from .auth import sign_session, verify_session, verify_token
+from .audit import query_audit, record_audit
 from .cluster_data import get_cluster_data
-from .config import ADMIN_PASSWORD
+from .config import ADMIN_PASSWORD, OPS_READ_TOKEN, OPS_WRITE_TOKEN
 from .ui import HTML_TEMPLATE
+
+_TOKEN_REDACT_LEN = 4
+
+
+def _api_token(headers):
+    """Extract the caller's API token without logging it."""
+    return headers.get("X-Ops-Token", "")
+
+
+def _read_allowed(headers):
+    cookie_header = headers.get("Cookie", "")
+    if verify_session(cookie_header):
+        return True
+    return verify_token(_api_token(headers), OPS_READ_TOKEN)
+
+
+def _write_allowed(headers):
+    cookie_header = headers.get("Cookie", "")
+    if verify_session(cookie_header):
+        return True
+    return verify_token(_api_token(headers), OPS_WRITE_TOKEN)
+
+
+def _json(handler, code, obj):
+    body = json.dumps(obj).encode("utf-8")
+    handler.send_response(code)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(body)
 
 class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -43,6 +74,19 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"authenticated": valid}).encode('utf-8'))
+            return
+
+        if path == "/api/audit":
+            if not _read_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            qs = urllib.parse.parse_qs(parsed.query)
+            items = query_audit(
+                limit=qs.get("limit", ["50"])[0],
+                actor=qs.get("actor", [None])[0],
+                level=qs.get("level", [None])[0],
+            )
+            _json(self, 200, {"items": items})
             return
 
         # Default: serve Frontend HTML with dynamic cockpit items injected
@@ -89,6 +133,26 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", "ops_token=; Path=/; HttpOnly; Max-Age=0")
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if path == "/api/audit":
+            if not _write_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            if length <= 0 or length > 65536:
+                _json(self, 400, {"error": "bad body length"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception:
+                _json(self, 400, {"error": "invalid JSON"})
+                return
+            row_id, err = record_audit(payload)
+            if err:
+                _json(self, 400, {"error": err})
+                return
+            _json(self, 200, {"status": "ok", "id": row_id})
             return
 
         self.send_response(404)

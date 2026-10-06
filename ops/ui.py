@@ -289,6 +289,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </section>
 
+      <!-- ═══ SECTION 3B: AI 操作审计时间线 (AUDIT TIMELINE) ═══ -->
+      <section class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-zinc-900 dark:text-white flex items-center space-x-2">
+              <span>🧾</span>
+              <span>AI 操作审计时间线</span>
+            </h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">三方 AI 的 L1/L2 写操作自动记账（5 分钟内上报），失败与驳回标红</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="flex rounded-xl bg-zinc-100 dark:bg-zinc-950 p-1 border border-zinc-200 dark:border-zinc-800">
+              <button onclick="setAuditFilter('actor','')" data-af="actor:" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-white bg-indigo-600 transition">全部</button>
+              <button onclick="setAuditFilter('actor','openclaw')" data-af="actor:openclaw" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">openclaw</button>
+              <button onclick="setAuditFilter('actor','opencode')" data-af="actor:opencode" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">opencode</button>
+              <button onclick="setAuditFilter('actor','muse-spark')" data-af="actor:muse-spark" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">muse-spark</button>
+            </div>
+            <div class="flex rounded-xl bg-zinc-100 dark:bg-zinc-950 p-1 border border-zinc-200 dark:border-zinc-800">
+              <button onclick="setAuditFilter('level','')" data-af="level:" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-white bg-indigo-600 transition">L1+L2</button>
+              <button onclick="setAuditFilter('level','L1')" data-af="level:L1" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">L1</button>
+              <button onclick="setAuditFilter('level','L2')" data-af="level:L2" class="audit-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">L2</button>
+            </div>
+          </div>
+        </div>
+        <div id="audit-list" class="space-y-2 text-sm max-h-96 overflow-y-auto pr-1">
+          <div class="text-xs text-zinc-400 py-4 text-center">加载中…</div>
+        </div>
+      </section>
+
       <!-- SECTION 4: DOMAIN & ROUTING MATRIX (SWARM MANAGED) -->
       <section class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -908,6 +937,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderRoutes();
       renderStandalone();
       renderAutomation(currentData.automation);
+      loadAudit();
     }
 
     // View Mode Switchers
@@ -1548,6 +1578,79 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           `;
         }).join('');
       }
+    }
+
+    // ═══ AUDIT TIMELINE ═══
+    let auditFilter = { actor: '', level: '' };
+
+    window.setAuditFilter = function(kind, value) {
+      auditFilter[kind] = value;
+      document.querySelectorAll('.audit-filter').forEach(btn => {
+        const parts = btn.getAttribute('data-af').split(':');
+        const k = parts[0], v = parts.slice(1).join(':');
+        const active = auditFilter[k] === v;
+        btn.className = 'audit-filter px-2.5 py-1 rounded-lg font-medium transition ' +
+          (active ? 'text-white bg-indigo-600' : 'text-zinc-600 dark:text-zinc-400');
+      });
+      loadAudit();
+    };
+
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function fmtTs(ts) {
+      try {
+        return new Date(ts * 1000).toLocaleString('zh-CN', {hour12: false});
+      } catch (e) { return '-'; }
+    }
+
+    async function loadAudit() {
+      const box = document.getElementById('audit-list');
+      if (!box) return;
+      try {
+        const q = new URLSearchParams({limit: '50'});
+        if (auditFilter.actor) q.set('actor', auditFilter.actor);
+        if (auditFilter.level) q.set('level', auditFilter.level);
+        const res = await fetch('/api/audit?' + q.toString());
+        if (res.status === 401) { checkAuth(); return; }
+        const data = await res.json();
+        renderAudit(data.items || []);
+      } catch (e) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">审计数据加载失败</div>';
+      }
+    }
+
+    function renderAudit(items) {
+      const box = document.getElementById('audit-list');
+      if (!box) return;
+      if (!items.length) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">暂无审计记录</div>';
+        return;
+      }
+      const levelColor = l => l === 'L2'
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+      const resultDot = r => r === 'ok'
+        ? '<span class="text-emerald-500">●</span>'
+        : '<span class="text-red-500">●</span>';
+      box.innerHTML = items.map(it => `
+        <div class="flex items-start gap-3 px-3 py-2 rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/60 dark:bg-zinc-900/40">
+          <div class="mt-0.5 flex-shrink-0">${resultDot(it.result)}</div>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="font-mono text-zinc-500 dark:text-zinc-400">${escHtml(fmtTs(it.ts))}</span>
+              <span class="font-semibold text-zinc-800 dark:text-zinc-200">${escHtml(it.actor)}</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${levelColor(it.level)}">${escHtml(it.level)}</span>
+              <span class="font-mono text-zinc-600 dark:text-zinc-300">${escHtml(it.action)}</span>
+              ${it.target ? `<span class="text-zinc-500 dark:text-zinc-400 truncate">→ ${escHtml(it.target)}</span>` : ''}
+            </div>
+            ${it.detail ? `<div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">${escHtml(it.detail)}</div>` : ''}
+          </div>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${it.result === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">${escHtml(it.result)}</span>
+        </div>
+      `).join('');
     }
   </script>
 </body>

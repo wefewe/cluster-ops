@@ -14,6 +14,10 @@ SESSION_SECRET = os.environ.get("SESSION_SECRET") or secrets.token_hex(32)
 PORTAINER_TOKEN_FILE = "/opt/portainer/api_token.key"
 SSH_DIR = "/root/.ssh"
 
-# Phase 2 (Agent API): empty = token auth disabled until enforcement lands.
+# Phase 1+: Agent API tokens. Empty = refuse to start (fail-fast, see server.main).
+# Tokens are injected via stack env; never baked into the image.
 OPS_READ_TOKEN = os.environ.get("OPS_READ_TOKEN", "")
 OPS_WRITE_TOKEN = os.environ.get("OPS_WRITE_TOKEN", "")
+
+# SQLite persistence (bind-mounted from host, covered by cluster-backup).
+DB_PATH = os.environ.get("OPS_DB_PATH", "/data/ops.db")
