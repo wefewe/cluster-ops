@@ -318,6 +318,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </section>
 
+      <!-- ═══ SECTION 3C: L2 审批队列 (APPROVAL QUEUE) ═══ -->
+      <section class="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-zinc-900 dark:text-white flex items-center space-x-2">
+              <span id="sec3c-icon"></span>
+              <span>L2 审批队列</span>
+              <span id="approval-pending-badge" class="hidden text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"></span>
+            </h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">AI 发起的 L2 高风险操作需在此批准；24 小时未处理自动驳回</p>
+          </div>
+          <div class="flex rounded-xl bg-zinc-100 dark:bg-zinc-950 p-1 border border-zinc-200 dark:border-zinc-800 text-xs">
+            <button onclick="setApprovalFilter('pending')" data-apf="pending" class="approval-filter px-2.5 py-1 rounded-lg font-medium text-white bg-indigo-600 transition">待处理</button>
+            <button onclick="setApprovalFilter('')" data-apf="" class="approval-filter px-2.5 py-1 rounded-lg font-medium text-zinc-600 dark:text-zinc-400 transition">全部</button>
+          </div>
+        </div>
+        <div id="approval-list" class="space-y-2 text-sm max-h-96 overflow-y-auto pr-1">
+          <div class="text-xs text-zinc-400 py-4 text-center">加载中…</div>
+        </div>
+      </section>
+
       <!-- SECTION 4: DOMAIN & ROUTING MATRIX (SWARM MANAGED) -->
       <section class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -938,6 +959,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderStandalone();
       renderAutomation(currentData.automation);
       loadAudit();
+      loadApprovals();
     }
 
     // View Mode Switchers
@@ -1649,6 +1671,99 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ${it.detail ? `<div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">${escHtml(it.detail)}</div>` : ''}
           </div>
           <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${it.result === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">${escHtml(it.result)}</span>
+        </div>
+      `).join('');
+    }
+
+    // ═══ APPROVAL QUEUE ═══
+    let approvalFilter = 'pending';
+
+    window.setApprovalFilter = function(status) {
+      approvalFilter = status;
+      document.querySelectorAll('.approval-filter').forEach(btn => {
+        const active = btn.getAttribute('data-apf') === status;
+        btn.className = 'approval-filter px-2.5 py-1 rounded-lg font-medium transition ' +
+          (active ? 'text-white bg-indigo-600' : 'text-zinc-600 dark:text-zinc-400');
+      });
+      loadApprovals();
+    };
+
+    async function loadApprovals() {
+      const box = document.getElementById('approval-list');
+      if (!box) return;
+      try {
+        const q = new URLSearchParams({limit: '50'});
+        if (approvalFilter) q.set('status', approvalFilter);
+        const res = await fetch('/api/approvals?' + q.toString());
+        if (res.status === 401) { checkAuth(); return; }
+        const data = await res.json();
+        renderApprovals(data.items || []);
+      } catch (e) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">审批队列加载失败</div>';
+      }
+    }
+
+    window.decideApproval = async function(id, decision) {
+      const verb = decision === 'approved' ? '批准' : '驳回';
+      if (!confirm(verb + ' #' + id + ' 的 L2 操作？此操作不可撤销。')) return;
+      try {
+        const res = await fetch('/api/approvals/' + id + '/decide', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({decision: decision})
+        });
+        if (res.status === 401) { checkAuth(); return; }
+        const data = await res.json();
+        if (!res.ok) { alert('失败：' + (data.error || res.status)); return; }
+        loadApprovals();
+      } catch (e) {
+        alert('请求失败：' + e);
+      }
+    };
+
+    function renderApprovals(items) {
+      const box = document.getElementById('approval-list');
+      if (!box) return;
+      const badge = document.getElementById('approval-pending-badge');
+      const pendingCount = items.filter(i => i.status === 'pending').length;
+      if (badge) {
+        if (pendingCount > 0) {
+          badge.textContent = pendingCount + ' 待处理';
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+      if (!items.length) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">暂无审批单</div>';
+        return;
+      }
+      const statusStyle = s => ({
+        pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+        approved: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+        rejected: 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+        executed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+        failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+      })[s] || '';
+      box.innerHTML = items.map(it => `
+        <div class="px-3 py-2 rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/60 dark:bg-zinc-900/40">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="font-mono text-zinc-400">#${it.id}</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${statusStyle(it.status)}">${it.status}</span>
+            <span class="font-semibold text-zinc-800 dark:text-zinc-200">${escHtml(it.requester)}</span>
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">${escHtml(it.action)}</span>
+            <span class="text-zinc-500 dark:text-zinc-400 truncate">→ ${escHtml(it.target)}</span>
+            <span class="font-mono text-zinc-500 dark:text-zinc-400">${escHtml(fmtTs(it.ts))}</span>
+          </div>
+          <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">理由：${escHtml(it.reason)}</div>
+          ${(it.params && Object.keys(it.params).length) ? `<div class="text-[11px] font-mono text-zinc-400 mt-0.5 truncate">params: ${escHtml(JSON.stringify(it.params))}</div>` : ''}
+          ${it.decision_note ? `<div class="text-[11px] text-zinc-500 mt-0.5">决定备注：${escHtml(it.decision_note)}</div>` : ''}
+          ${it.execute_detail ? `<div class="text-[11px] text-zinc-500 mt-0.5">执行结果：${escHtml(it.execute_detail)}</div>` : ''}
+          ${it.status === 'pending' ? `
+          <div class="flex gap-2 mt-2">
+            <button onclick="decideApproval(${it.id}, 'approved')" class="px-3 py-1 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition">✓ 批准</button>
+            <button onclick="decideApproval(${it.id}, 'rejected')" class="px-3 py-1 rounded-lg text-xs font-medium text-white bg-red-600 hover:bg-red-700 transition">✕ 驳回</button>
+          </div>` : ''}
         </div>
       `).join('');
     }

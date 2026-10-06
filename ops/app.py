@@ -3,10 +3,17 @@ import hmac
 import http.server
 import json
 import os
+import re
 import time
 import urllib.parse
 
 from .auth import sign_session, verify_session, verify_token
+from .approvals import (
+    create_approval,
+    decide_approval,
+    list_approvals,
+    report_result,
+)
 from .audit import query_audit, record_audit
 from .cluster_data import get_cluster_data
 from .config import ADMIN_PASSWORD, OPS_READ_TOKEN, OPS_WRITE_TOKEN
@@ -32,6 +39,11 @@ def _write_allowed(headers):
     if verify_session(cookie_header):
         return True
     return verify_token(_api_token(headers), OPS_WRITE_TOKEN)
+
+
+def _owner_allowed(headers):
+    """Owner decisions require the admin session cookie, never an API token."""
+    return verify_session(headers.get("Cookie", ""))
 
 
 def _json(handler, code, obj):
@@ -84,6 +96,18 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 limit=qs.get("limit", ["50"])[0],
                 actor=qs.get("actor", [None])[0],
                 level=qs.get("level", [None])[0],
+            )
+            _json(self, 200, {"items": items})
+            return
+
+        if path == "/api/approvals":
+            if not _read_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            qs = urllib.parse.parse_qs(parsed.query)
+            items = list_approvals(
+                status=qs.get("status", [None])[0],
+                limit=qs.get("limit", ["50"])[0],
             )
             _json(self, 200, {"items": items})
             return
@@ -152,6 +176,80 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 _json(self, 400, {"error": err})
                 return
             _json(self, 200, {"status": "ok", "id": row_id})
+            return
+
+        if path == "/api/approvals":
+            # AI files an L2 approval request (write token).
+            if not _write_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            if length <= 0 or length > 65536:
+                _json(self, 400, {"error": "bad body length"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception:
+                _json(self, 400, {"error": "invalid JSON"})
+                return
+            appr, err = create_approval(payload)
+            if err:
+                _json(self, 400, {"error": err})
+                return
+            _json(self, 200, {"status": "ok", "approval": appr})
+            return
+
+        m = re.match(r"^/api/approvals/(\d+)/decide$", path)
+        if m:
+            # Owner approves/rejects from the panel (admin cookie ONLY).
+            if not _owner_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            if length <= 0 or length > 65536:
+                _json(self, 400, {"error": "bad body length"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception:
+                _json(self, 400, {"error": "invalid JSON"})
+                return
+            appr, err, code = decide_approval(
+                int(m.group(1)),
+                payload.get("decision", ""),
+                payload.get("note", ""),
+            )
+            if err:
+                _json(self, code, {"error": err})
+                return
+            _json(self, 200, {"status": "ok", "approval": appr})
+            return
+
+        m = re.match(r"^/api/approvals/(\d+)/result$", path)
+        if m:
+            # Requesting AI reports execution outcome (write token).
+            if not _write_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            if length <= 0 or length > 65536:
+                _json(self, 400, {"error": "bad body length"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception:
+                _json(self, 400, {"error": "invalid JSON"})
+                return
+            appr, err, code = report_result(
+                int(m.group(1)),
+                payload.get("outcome", ""),
+                payload.get("detail", ""),
+                payload.get("requester", ""),
+            )
+            if err:
+                _json(self, code, {"error": err})
+                return
+            _json(self, 200, {"status": "ok", "approval": appr})
             return
 
         self.send_response(404)

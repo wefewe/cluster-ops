@@ -31,6 +31,8 @@ ACTIONS = (
     "data_restore",
     "data_delete",
     "approval_decision",
+    "approval_request",
+    "approval_result",
     "other",
 )
 
