@@ -31,3 +31,10 @@ def verify_session(cookie_header):
     except Exception:
         return False
 
+
+def verify_token(provided, expected):
+    """Constant-time API token check. Empty expected = auth misconfigured."""
+    if not provided or not expected:
+        return False
+    return hmac.compare_digest(provided, expected)
+
