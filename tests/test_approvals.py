@@ -120,8 +120,6 @@ def test_token_touch_throttled(tmpdb, monkeypatch):
 
 
 def test_token_metadata_shape(tmpdb):
-    from ops import app
-    import ops.config as config
     import ops.app as appmod
     # metadata works without any usage recorded
     meta = appmod._token_metadata()
@@ -134,3 +132,28 @@ def test_token_metadata_shape(tmpdb):
     wt = [t for t in meta if t["name"] == "OPS_WRITE_TOKEN"][0]
     assert wt["last_used"] > 0
     assert wt["purpose"] == "写"
+
+
+def test_rendered_inline_js_parses(tmp_path):
+    """Guard against Python-escape mangling of inline JS.
+
+    HTML_TEMPLATE is a non-raw Python string: a stray backslash escape
+    (e.g. \\n inside a JS string literal) becomes a real newline in the
+    served HTML and kills the whole inline script (2026-10-06 login outage).
+    This test validates the RENDERED output, not the Python source.
+    """
+    import shutil
+    import subprocess
+    from ops.ui import HTML_TEMPLATE
+    start = HTML_TEMPLATE.rfind("<script>") + len("<script>")
+    end = HTML_TEMPLATE.rfind("</script>")
+    js = HTML_TEMPLATE[start:end]
+    assert "login-form" in js  # sanity: extracted the main script
+    node = shutil.which("node")
+    if not node:
+        import pytest as _pytest
+        _pytest.skip("node not available")
+    p = tmp_path / "rendered.js"
+    p.write_text(js, encoding="utf-8")
+    r = subprocess.run([node, "--check", str(p)], capture_output=True, text=True)
+    assert r.returncode == 0, f"inline JS syntax error:\n{r.stderr[:500]}"
