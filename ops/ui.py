@@ -339,6 +339,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </section>
 
+      <!-- ═══ SECTION 3D: TOKEN 管理 (AGENT API TOKENS) ═══ -->
+      <section class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-zinc-900 dark:text-white flex items-center space-x-2">
+              <span id="sec3d-icon"></span>
+              <span>Token 管理</span>
+            </h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Agent API 鉴权 token。token 值只存于服务器 yml，此处仅显示元信息；轮换在服务器执行</p>
+          </div>
+          <button onclick="copyRotateCmd()" class="px-3 py-1.5 rounded-xl text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition">复制轮换命令</button>
+        </div>
+        <div id="token-list" class="space-y-2 text-sm">
+          <div class="text-xs text-zinc-400 py-4 text-center">加载中…</div>
+        </div>
+      </section>
+
       <!-- SECTION 4: DOMAIN & ROUTING MATRIX (SWARM MANAGED) -->
       <section class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 shadow-sm relative transition-colors">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -960,6 +977,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderAutomation(currentData.automation);
       loadAudit();
       loadApprovals();
+      loadTokens();
+      startAutoRefresh();
     }
 
     // View Mode Switchers
@@ -1767,6 +1786,97 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       `).join('');
     }
+
+    // ═══ AUTO REFRESH: approval badge/title + audit timeline ═══
+    const BASE_TITLE = document.title;
+    let lastPendingCount = -1;
+
+    function updateApprovalBadge(count) {
+      const badge = document.getElementById('approval-pending-badge');
+      if (badge) {
+        if (count > 0) {
+          badge.textContent = count + ' 待处理';
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+      document.title = count > 0 ? `(${count} 待审批) ${BASE_TITLE}` : BASE_TITLE;
+    }
+
+    async function refreshApprovalBadge() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/approvals?status=pending&limit=100');
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = (data.items || []).length;
+        updateApprovalBadge(count);
+        // Re-render the list only when the pending count changed,
+        // so we never yank buttons out from under the user's finger.
+        if (count !== lastPendingCount) {
+          lastPendingCount = count;
+          if (approvalFilter === 'pending') loadApprovals();
+        }
+      } catch (e) { /* silent: next tick retries */ }
+    }
+
+    function startAutoRefresh() {
+      setInterval(refreshApprovalBadge, 60000);
+      setInterval(() => {
+        if (document.visibilityState === 'visible') loadAudit();
+      }, 120000);
+    }
+
+    // ═══ TOKEN MANAGEMENT ═══
+    async function loadTokens() {
+      const box = document.getElementById('token-list');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/tokens');
+        if (res.status === 401) { checkAuth(); return; }
+        const data = await res.json();
+        renderTokens(data.tokens || []);
+      } catch (e) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">Token 信息加载失败</div>';
+      }
+    }
+
+    function renderTokens(tokens) {
+      const box = document.getElementById('token-list');
+      if (!box) return;
+      if (!tokens.length) {
+        box.innerHTML = '<div class="text-xs text-zinc-400 py-4 text-center">暂无 token</div>';
+        return;
+      }
+      const purposeColor = p => p === '写'
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+      box.innerHTML = tokens.map(t => `
+        <div class="px-3 py-2 rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/60 dark:bg-zinc-900/40">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="font-mono font-semibold text-zinc-800 dark:text-zinc-200">${escHtml(t.name)}</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${purposeColor(t.purpose)}">${escHtml(t.purpose)}</span>
+            <span class="text-zinc-500 dark:text-zinc-400">持有者：${escHtml(t.holders)}</span>
+          </div>
+          <div class="text-[11px] font-mono text-zinc-400 mt-1 truncate">接口：${escHtml((t.scopes || []).join(' · '))}</div>
+          <div class="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+            <span>最后使用：${t.last_used ? escHtml(fmtTs(t.last_used)) : '从未使用'}</span>
+            <span class="font-mono">配置：${escHtml(t.configured_in)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.copyRotateCmd = function() {
+      const cmd = 'sudo /usr/local/bin/ops-token-rotate.sh';
+      const done = () => alert('已复制：' + cmd + '\n在服务器上执行以轮换两个 token（需维护锁）。');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).then(done).catch(() => prompt('复制此命令：', cmd));
+      } else {
+        prompt('复制此命令：', cmd);
+      }
+    };
   </script>
 </body>
 </html>

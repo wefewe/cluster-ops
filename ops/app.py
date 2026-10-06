@@ -15,6 +15,7 @@ from .approvals import (
     report_result,
 )
 from .audit import query_audit, record_audit
+from . import db
 from .cluster_data import get_cluster_data
 from .config import ADMIN_PASSWORD, OPS_READ_TOKEN, OPS_WRITE_TOKEN
 from .ui import HTML_TEMPLATE
@@ -31,14 +32,47 @@ def _read_allowed(headers):
     cookie_header = headers.get("Cookie", "")
     if verify_session(cookie_header):
         return True
-    return verify_token(_api_token(headers), OPS_READ_TOKEN)
+    if verify_token(_api_token(headers), OPS_READ_TOKEN):
+        db.touch_token("OPS_READ_TOKEN")
+        return True
+    return False
 
 
 def _write_allowed(headers):
     cookie_header = headers.get("Cookie", "")
     if verify_session(cookie_header):
         return True
-    return verify_token(_api_token(headers), OPS_WRITE_TOKEN)
+    if verify_token(_api_token(headers), OPS_WRITE_TOKEN):
+        db.touch_token("OPS_WRITE_TOKEN")
+        return True
+    return False
+
+
+# Token metadata for the management UI. Values never leave the server.
+TOKEN_CATALOG = (
+    {
+        "name": "OPS_READ_TOKEN",
+        "purpose": "只读",
+        "scopes": ["GET /api/data", "GET /api/audit", "GET /api/approvals"],
+        "holders": "openclaw / opencode / muse-spark",
+        "configured_in": "/opt/swarm/stacks/jp/cluster-ops.yml",
+    },
+    {
+        "name": "OPS_WRITE_TOKEN",
+        "purpose": "写",
+        "scopes": ["POST /api/audit", "POST /api/approvals", "POST /api/approvals/:id/result"],
+        "holders": "openclaw / opencode / muse-spark",
+        "configured_in": "/opt/swarm/stacks/jp/cluster-ops.yml",
+    },
+)
+
+
+def _token_metadata():
+    usage = db.list_token_usage()
+    return [
+        {**t, "last_used": usage.get(t["name"], 0)}
+        for t in TOKEN_CATALOG
+    ]
 
 
 def _owner_allowed(headers):
@@ -110,6 +144,14 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 limit=qs.get("limit", ["50"])[0],
             )
             _json(self, 200, {"items": items})
+            return
+
+        if path == "/api/tokens":
+            # Owner-only: token metadata (values never leave the server).
+            if not _owner_allowed(self.headers):
+                _json(self, 401, {"error": "Unauthorized"})
+                return
+            _json(self, 200, {"tokens": _token_metadata()})
             return
 
         # Default: serve Frontend HTML with dynamic cockpit items injected
