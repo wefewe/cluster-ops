@@ -16,7 +16,7 @@ the full story.
 import json
 import time
 
-from . import audit, db
+from . import audit, db, notify
 
 STATUSES = ("pending", "approved", "rejected", "executed", "failed")
 EXPIRY_SECONDS = 24 * 3600
@@ -85,6 +85,7 @@ def create_approval(payload):
     })
     appr = get_approval(row_id)
     _audit_transition(appr, "approval_request", requester, "ok", reason)
+    notify.notify_async(notify.approval_created_msg(appr))
     return appr, ""
 
 
