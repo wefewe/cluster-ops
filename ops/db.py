@@ -40,6 +40,27 @@ def init_db():
                 )"""
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts DESC)")
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS approvals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts INTEGER NOT NULL,
+                    updated INTEGER NOT NULL,
+                    requester TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    target TEXT NOT NULL DEFAULT '',
+                    params TEXT NOT NULL DEFAULT '{}',
+                    reason TEXT NOT NULL DEFAULT '',
+                    level TEXT NOT NULL DEFAULT 'L2',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    decided_by TEXT NOT NULL DEFAULT '',
+                    decided_at INTEGER NOT NULL DEFAULT 0,
+                    decision_note TEXT NOT NULL DEFAULT '',
+                    executed_at INTEGER NOT NULL DEFAULT 0,
+                    execute_detail TEXT NOT NULL DEFAULT '',
+                    expires_at INTEGER NOT NULL DEFAULT 0
+                )"""
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status)")
             conn.commit()
         finally:
             conn.close()
@@ -86,5 +107,81 @@ def list_audit(limit=50, actor=None, level=None):
         try:
             rows = conn.execute(sql, params).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def insert_approval(entry):
+    """Insert one approval row. Returns the new row id."""
+    with _db_lock:
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                """INSERT INTO approvals
+                   (ts, updated, requester, action, target, params, reason,
+                    level, status, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    entry["ts"], entry["updated"], entry["requester"],
+                    entry["action"], entry["target"], entry["params"],
+                    entry["reason"], entry["level"], entry["status"],
+                    entry["expires_at"],
+                ),
+            )
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+
+def get_approval_row(approval_id):
+    with _db_lock:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM approvals WHERE id = ?", (approval_id,)
+            ).fetchone()
+            return row
+        finally:
+            conn.close()
+
+
+def list_approval_rows(status=None, limit=50):
+    limit = max(1, min(int(limit or 50), 500))
+    where, params = [], []
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    sql = "SELECT * FROM approvals"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY ts DESC, id DESC LIMIT ?"
+    params.append(limit)
+    with _db_lock:
+        conn = _connect()
+        try:
+            return conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+
+
+def update_approval(approval_id, fields):
+    """Update allowed mutable fields of an approval row."""
+    allowed = (
+        "updated", "status", "decided_by", "decided_at", "decision_note",
+        "executed_at", "execute_detail",
+    )
+    sets = [f"{k} = ?" for k in fields if k in allowed]
+    values = [fields[k] for k in fields if k in allowed]
+    if not sets:
+        return
+    values.append(approval_id)
+    with _db_lock:
+        conn = _connect()
+        try:
+            conn.execute(
+                f"UPDATE approvals SET {', '.join(sets)} WHERE id = ?", values
+            )
+            conn.commit()
         finally:
             conn.close()
