@@ -19,5 +19,10 @@ SSH_DIR = "/root/.ssh"
 OPS_READ_TOKEN = os.environ.get("OPS_READ_TOKEN", "")
 OPS_WRITE_TOKEN = os.environ.get("OPS_WRITE_TOKEN", "")
 
+# Phase 3b: Telegram push on new approval requests.
+# Empty = no push. Never fail-fast: the panel must work without Telegram.
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
+
 # SQLite persistence (bind-mounted from host, covered by cluster-backup).
 DB_PATH = os.environ.get("OPS_DB_PATH", "/data/ops.db")
