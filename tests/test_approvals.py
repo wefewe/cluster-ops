@@ -157,3 +157,33 @@ def test_rendered_inline_js_parses(tmp_path):
     p.write_text(js, encoding="utf-8")
     r = subprocess.run([node, "--check", str(p)], capture_output=True, text=True)
     assert r.returncode == 0, f"inline JS syntax error:\n{r.stderr[:500]}"
+
+
+def test_approval_push_message_format():
+    from ops import notify
+    appr = {"id": 42, "requester": "muse-spark", "action": "restart_service",
+            "target": "some_service", "reason": "test reason"}
+    msg = notify.approval_created_msg(appr)
+    assert "#42" in msg
+    assert "muse-spark" in msg
+    assert "restart_service" in msg
+    assert "some_service" in msg
+    assert "test reason" in msg
+    assert "24h" in msg
+
+
+def test_notify_async_noop_without_config(tmpdb, monkeypatch):
+    """No TG env -> notify_async must be a silent no-op, never raise."""
+    from ops import config, notify
+    monkeypatch.setattr(config, "TG_BOT_TOKEN", "")
+    monkeypatch.setattr(config, "TG_CHAT_ID", "")
+    notify.notify_async("hello")  # must not raise
+
+
+def test_create_approval_without_tg_config(tmpdb, monkeypatch):
+    """Approval creation must succeed even when Telegram is unconfigured."""
+    from ops import config
+    monkeypatch.setattr(config, "TG_BOT_TOKEN", "")
+    monkeypatch.setattr(config, "TG_CHAT_ID", "")
+    appr, err = approvals.create_approval(_payload())
+    assert err == "" and appr["status"] == "pending"
