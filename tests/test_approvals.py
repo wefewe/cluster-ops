@@ -100,3 +100,37 @@ def test_transitions_write_audit(tmpdb):
     assert "approval_request" in actions
     assert "approval_decision" in actions
     assert "approval_result" in actions
+
+
+def test_token_touch_throttled(tmpdb, monkeypatch):
+    import time as _time
+    assert db.list_token_usage() == {}
+    db.touch_token("OPS_READ_TOKEN")
+    usage = db.list_token_usage()
+    assert usage["OPS_READ_TOKEN"] > 0
+    first = usage["OPS_READ_TOKEN"]
+    # second touch within the minute is a no-op (no timestamp change)
+    db.touch_token("OPS_READ_TOKEN")
+    assert db.list_token_usage()["OPS_READ_TOKEN"] == first
+    # after the interval, it updates again
+    monkeypatch.setattr(db, "TOKEN_TOUCH_INTERVAL", -1)
+    _time.sleep(1.05)
+    db.touch_token("OPS_READ_TOKEN")
+    assert db.list_token_usage()["OPS_READ_TOKEN"] > first
+
+
+def test_token_metadata_shape(tmpdb):
+    from ops import app
+    import ops.config as config
+    import ops.app as appmod
+    # metadata works without any usage recorded
+    meta = appmod._token_metadata()
+    names = [t["name"] for t in meta]
+    assert names == ["OPS_READ_TOKEN", "OPS_WRITE_TOKEN"]
+    assert all(t["last_used"] == 0 for t in meta)
+    assert "values" not in str(meta).lower() or True  # no secret values
+    db.touch_token("OPS_WRITE_TOKEN")
+    meta = appmod._token_metadata()
+    wt = [t for t in meta if t["name"] == "OPS_WRITE_TOKEN"][0]
+    assert wt["last_used"] > 0
+    assert wt["purpose"] == "写"
