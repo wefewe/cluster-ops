@@ -29,6 +29,22 @@ def test_token_verify():
     assert not verify_token("secret123", "")
 
 
+def test_read_write_allowed(monkeypatch):
+    import ops.app as app
+    import ops.config as config
+    monkeypatch.setattr(config, "OPS_READ_TOKEN", "rt")
+    monkeypatch.setattr(config, "OPS_WRITE_TOKEN", "wt")
+    # rebind module-level names imported into ops.app
+    monkeypatch.setattr(app, "OPS_READ_TOKEN", "rt")
+    monkeypatch.setattr(app, "OPS_WRITE_TOKEN", "wt")
+    assert app._read_allowed({"X-Ops-Token": "rt"})
+    assert not app._read_allowed({"X-Ops-Token": "bad"})
+    assert not app._read_allowed({})
+    assert app._write_allowed({"X-Ops-Token": "wt"})
+    assert not app._write_allowed({"X-Ops-Token": "rt"})  # read != write
+    assert not app._write_allowed({})
+
+
 def test_audit_validation():
     from ops.audit import validate_audit_payload
     ok, _ = validate_audit_payload({"actor": "muse-spark", "level": "L1",
