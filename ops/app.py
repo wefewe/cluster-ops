@@ -51,8 +51,7 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/api/data":
-            cookie_header = self.headers.get("Cookie", "")
-            if not verify_session(cookie_header):
+            if not _read_allowed(self.headers):
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
