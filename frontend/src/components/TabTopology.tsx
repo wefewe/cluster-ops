@@ -46,17 +46,24 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
   }, [routes]);
 
   const toggleStack = (stack: string) => {
-    setExpandedStacks(prev => ({ ...prev, [stack]: !prev[stack] }));
+    setExpandedStacks(prev => {
+      const current = prev[stack] ?? true;
+      return { ...prev, [stack]: !current };
+    });
   };
 
   const expandAll = () => {
     const next: Record<string, boolean> = {};
-    allStacks.forEach(s => next[s] = true);
+    allStacks.forEach(s => (next[s] = true));
+    Object.keys(routesByStack).forEach(s => (next[s] = true));
     setExpandedStacks(next);
   };
 
   const collapseAll = () => {
-    setExpandedStacks({});
+    const next: Record<string, boolean> = {};
+    allStacks.forEach(s => (next[s] = false));
+    Object.keys(routesByStack).forEach(s => (next[s] = false));
+    setExpandedStacks(next);
   };
 
   return (
@@ -326,14 +333,16 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
             {viewMode === 'accordion' && (
               <div className="flex items-center gap-1 text-xs">
                 <button
+                  type="button"
                   onClick={expandAll}
-                  className="px-2 py-1 rounded-lg text-zinc-500 hover:text-indigo-500 font-medium"
+                  className="px-2 py-1 rounded-lg text-zinc-500 hover:text-indigo-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-medium transition-colors cursor-pointer"
                 >
                   全部展开
                 </button>
                 <button
+                  type="button"
                   onClick={collapseAll}
-                  className="px-2 py-1 rounded-lg text-zinc-500 hover:text-indigo-500 font-medium"
+                  className="px-2 py-1 rounded-lg text-zinc-500 hover:text-indigo-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-medium transition-colors cursor-pointer"
                 >
                   全部折叠
                 </button>

@@ -26,11 +26,12 @@ export const CockpitBar: React.FC<CockpitBarProps> = ({ items }) => {
 
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/60 dark:bg-zinc-950/40 py-2.5 px-4 sm:px-6 transition-colors">
-      <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
-        <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">
-          控制台直达:
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+          控制台直达 ({items.length}):
         </span>
-        <div className="flex items-center gap-2 flex-nowrap">
+        <div className="flex flex-wrap items-center gap-2">
           {items.map((item) => (
             <a
               key={item.name}
