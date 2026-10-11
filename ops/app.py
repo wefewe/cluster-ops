@@ -22,6 +22,18 @@ from .ui import HTML_TEMPLATE
 
 _TOKEN_REDACT_LEN = 4
 
+# Static frontend assets resolution
+STATIC_DIR = os.environ.get("STATIC_DIR", "")
+if not STATIC_DIR:
+    for candidate in [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist"),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist"),
+        "/app/dist",
+    ]:
+        if os.path.exists(os.path.join(candidate, "index.html")):
+            STATIC_DIR = candidate
+            break
+
 
 def _api_token(headers):
     """Extract the caller's API token without logging it."""
@@ -154,16 +166,58 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             _json(self, 200, {"tokens": _token_metadata()})
             return
 
+        # Static assets (JS, CSS, SVGs, etc.)
+        if path.startswith("/assets/") and STATIC_DIR:
+            asset_path = os.path.join(STATIC_DIR, path.lstrip("/"))
+            if os.path.exists(asset_path) and os.path.isfile(asset_path):
+                ext = os.path.splitext(asset_path)[1].lower()
+                mime = {
+                    ".js": "application/javascript; charset=utf-8",
+                    ".css": "text/css; charset=utf-8",
+                    ".svg": "image/svg+xml",
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".woff2": "font/woff2",
+                    ".json": "application/json",
+                }.get(ext, "application/octet-stream")
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+                self.end_headers()
+                with open(asset_path, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+
         # Default: serve Frontend HTML with dynamic cockpit items injected
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        rendered_html = HTML_TEMPLATE
+        index_file = os.path.join(STATIC_DIR, "index.html") if STATIC_DIR else ""
+        if index_file and os.path.exists(index_file):
+            with open(index_file, "r", encoding="utf-8") as f:
+                rendered_html = f.read()
+        else:
+            rendered_html = HTML_TEMPLATE
+
         cockpit_env = os.environ.get("COCKPIT_ITEMS_JSON", "")
         if cockpit_env:
             inject_script = f"<script>window.__OPS_COCKPIT_ITEMS__ = {cockpit_env};</script>"
             rendered_html = rendered_html.replace("</head>", f"{inject_script}</head>")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
         self.wfile.write(rendered_html.encode('utf-8'))
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
