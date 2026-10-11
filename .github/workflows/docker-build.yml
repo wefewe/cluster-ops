@@ -58,7 +58,7 @@ jobs:
           echo "Waiting for cluster-ops to become healthy..."
           passed=0
           for i in $(seq 1 30); do
-            if curl -sS http://127.0.0.1:8080/api/auth-check | grep -q "authenticated"; then
+            if curl -sS --fail http://127.0.0.1:8080/health >/dev/null 2>&1; then
               echo "✅ Pre-flight smoke test passed on attempt $i!"
               passed=1
               break

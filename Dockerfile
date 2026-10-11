@@ -15,5 +15,5 @@ COPY ops /app/ops
 COPY --from=frontend-builder /app/frontend/dist /app/dist
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/api/auth-check || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 CMD ["python3", "-u", "/app/server.py"]

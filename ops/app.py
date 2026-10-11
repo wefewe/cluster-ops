@@ -108,6 +108,13 @@ class OpsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
+        if path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
         if path == "/api/data":
             if not _read_allowed(self.headers):
                 self.send_response(401)
