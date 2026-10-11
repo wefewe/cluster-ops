@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Archive, Shield, Bot, Clock, Server, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
+import { Archive, Shield, Bot, Clock, Server, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
 import { AutomationData, StandaloneService } from '../types';
 
 interface TabAutomationProps {
@@ -29,21 +29,29 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
           </div>
 
           <div className="space-y-2 text-xs">
-            {backups.map((b) => (
-              <div key={b.name} className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800/60 font-mono">
-                <div>
-                  <div className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${b.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    <span>{b.name}</span>
+            {backups.length === 0 ? (
+              <p className="text-zinc-400 text-[11px] py-4 text-center">正在加载冷备状态...</p>
+            ) : (
+              backups.map((b) => (
+                <div key={b.name} className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800/60 font-mono">
+                  <div className="truncate mr-2">
+                    <div className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 truncate">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${b.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <span className="truncate">{b.name}</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 truncate">{b.host || '本地备份'}</div>
                   </div>
-                  <div className="text-[10px] text-zinc-400">➔ {b.dest}</div>
+                  <div className="text-right shrink-0">
+                    <div className="font-bold text-zinc-900 dark:text-zinc-100">
+                      {b.size_mb !== undefined && b.size_mb !== null ? `${b.size_mb} MB` : '-'}
+                    </div>
+                    <div className="text-[10px] text-zinc-400">
+                      {b.age_h !== undefined && b.age_h !== null ? `${b.age_h}h 前` : '-'}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-bold text-zinc-900 dark:text-zinc-100">{b.size}</div>
-                  <div className="text-[10px] text-zinc-400">{b.age}</div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -74,6 +82,10 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
               <span className="text-zinc-500">巡检运行周期:</span>
               <span className="font-mono text-zinc-700 dark:text-zinc-300">每 2 小时自愈比对</span>
             </div>
+            <div className="flex justify-between pt-1 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400">
+              <span>防抖动策略:</span>
+              <span>内容级 SHA256 比对</span>
+            </div>
           </div>
         </div>
 
@@ -89,18 +101,24 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
             </span>
           </div>
 
-          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800/60 space-y-1.5 text-xs">
+          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800/60 space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-zinc-500">Telegram Bot:</span>
-              <span className="font-mono text-indigo-500 font-semibold">{agent?.tg_bot}</span>
+              <span className="text-zinc-500">Telegram 播报:</span>
+              <span className="font-mono text-indigo-500 font-semibold">{agent?.tg_bot || '@cwsub_cluster_agent_bot'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-500">核心思考模型:</span>
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">{agent?.model}</span>
+              <span className="text-zinc-500">核心决策模型:</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]" title={agent?.model}>
+                {agent?.model || 'AxonHub 核心'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-500">MCP 只读工具集:</span>
-              <span className="font-mono text-zinc-800 dark:text-zinc-200">{agent?.mcp_tools}</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">{agent?.mcp_tools || 'Portainer 只读'}</span>
+            </div>
+            <div className="flex justify-between pt-1 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-400">
+              <span>晨报推送周期:</span>
+              <span>每日 09:00</span>
             </div>
           </div>
         </div>
@@ -116,13 +134,16 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {timers.map((t) => (
-              <div key={t.name} className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800 space-y-1 text-xs font-mono">
+              <div key={`${t.host}-${t.unit}`} className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800 space-y-1 text-xs font-mono">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-zinc-800 dark:text-zinc-200 truncate">{t.name}</span>
-                  <span className={`w-2 h-2 rounded-full ${t.active ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+                  <span className="font-bold text-zinc-800 dark:text-zinc-200 truncate mr-2">{t.unit}</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
+                    t.active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {t.host.toUpperCase()}
+                  </span>
                 </div>
-                <div className="text-[11px] text-zinc-500 truncate">计划: {t.schedule}</div>
-                <div className="text-[10px] text-zinc-400">下次: {t.next}</div>
+                <div className="text-[11px] text-zinc-400">下次触发: {t.next}</div>
               </div>
             ))}
           </div>
@@ -171,12 +192,15 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
               </h3>
               <div className="space-y-2">
                 {sList.map((s, idx) => (
-                  <div key={idx} className="p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-semibold text-zinc-800 dark:text-zinc-200">{s.name}</div>
-                      <div className="text-[10px] text-zinc-400 font-mono">{s.type} {s.port ? `:${s.port}` : ''}</div>
+                  <div key={idx} className="p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between text-xs gap-2">
+                    <div className="truncate">
+                      <div className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 truncate">
+                        <span>{s.icon || '📦'}</span>
+                        <span className="truncate">{s.slot_name || s.name}</span>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-mono truncate">{s.name} ({s.image || s.type})</div>
                     </div>
-                    <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-emerald-500/10 text-emerald-500 font-bold">
+                    <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-emerald-500/10 text-emerald-500 font-bold shrink-0">
                       {s.status}
                     </span>
                   </div>
@@ -190,17 +214,17 @@ export const TabAutomation: React.FC<TabAutomationProps> = ({ automation, standa
         {Object.keys(systemd_daemons).length > 0 && (
           <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-2 text-xs">
             <span className="font-bold text-zinc-500 text-[11px] uppercase tracking-wider">
-              宿主底层守护底座 (Systemd Services):
+              宿主底层守护底座 (Systemd Native):
             </span>
             <div className="flex flex-wrap gap-2">
               {Object.entries(systemd_daemons).flatMap(([node, daemons]) => 
                 daemons.map(d => (
                   <span
-                    key={`${node}-${d.name}`}
+                    key={`${node}-${d.unit}`}
                     className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-[11px] font-mono text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <strong>{node.split('-')[0]}:</strong> {d.name}
+                    <span className={`w-1.5 h-1.5 rounded-full ${d.active ? 'bg-emerald-500' : 'bg-zinc-500'}`} />
+                    <strong>{node.split('-')[0]}:</strong> {d.label || d.name} ({d.unit})
                   </span>
                 ))
               )}

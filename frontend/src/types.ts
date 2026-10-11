@@ -1,17 +1,31 @@
 export interface NodeStat {
+  id?: string;
   node: string;
   name: string;
+  hostname?: string;
   role: string;
   status: string;
   arch: string;
   color: string;
-  cpu_pct: number | null;
-  mem_used_mb: number | null;
-  mem_total_mb: number | null;
-  mem_pct: number | null;
-  disk_used_gb: number | null;
-  disk_total_gb: number | null;
-  disk_pct: number | null;
+  ip?: string;
+  tasks_count?: number;
+  hardware?: {
+    cpu_pct?: number;
+    mem_used_mb?: number;
+    mem_total_mb?: number;
+    mem_pct?: number;
+    disk_used_gb?: number;
+    disk_total_gb?: number;
+    disk_pct?: number;
+    status?: string;
+  };
+  cpu_pct?: number | null;
+  mem_used_mb?: number | null;
+  mem_total_mb?: number | null;
+  mem_pct?: number | null;
+  disk_used_gb?: number | null;
+  disk_total_gb?: number | null;
+  disk_pct?: number | null;
 }
 
 export interface RouteItem {
@@ -40,30 +54,33 @@ export interface StandaloneService {
   version?: string;
   autoupdate?: string;
   subdomain?: string;
+  image?: string;
+  tag?: string;
+  slot_name?: string;
+  slot_key?: string;
+  order?: number;
 }
 
 export interface BackupItem {
   name: string;
-  dest: string;
-  size: string;
-  age: string;
+  host?: string;
+  size_mb?: number;
+  age_h?: number;
   ok: boolean;
 }
 
 export interface TimerItem {
-  name: string;
-  schedule: string;
+  unit: string;
   next: string;
   active: boolean;
-  triggered?: string;
-  missed?: string;
+  host: string;
 }
 
 export interface SystemdDaemon {
   name: string;
-  status: string;
-  desc?: string;
-  pid?: number;
+  label?: string;
+  unit: string;
+  active: boolean;
 }
 
 export interface AutomationData {

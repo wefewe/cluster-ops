@@ -51,7 +51,7 @@ def fetch_remote_stats(ip, key_name, port="5522"):
     except Exception:
         return None
 
-def fetch_local_jp_stats():
+def fetch_local_host_stats():
     try:
         mem = {}
         with open('/proc/meminfo') as f:
@@ -86,6 +86,9 @@ def fetch_local_jp_stats():
         }
     except Exception:
         return None
+
+# Maintain backward compatibility
+fetch_local_jp_stats = fetch_local_host_stats
 
 def fetch_portainer_standalone():
     if not os.path.exists(PORTAINER_TOKEN_FILE):
@@ -427,11 +430,40 @@ def background_telemetry_loop():
     auto_tick = 0
     while True:
         try:
-            # 1. Hardware stats
-            jp_stats = fetch_local_jp_stats()
+            # 1. Hardware stats (dynamically detects local host vs remote nodes)
+            local_node = ""
+            try:
+                docker_info = get_docker_api("/info")
+                local_node = docker_info.get("Name", "")
+            except Exception:
+                pass
+
+            def _get_node_hw(node_name):
+                # If running locally on this node, use /proc directly
+                if local_node and local_node == node_name:
+                    st = fetch_local_host_stats()
+                    if st:
+                        return st
+
+                if node_name == "jp-oracle":
+                    return (
+                        fetch_remote_stats("10.10.0.1", "id_ed25519", "5522") or
+                        fetch_remote_stats("10.10.0.1", "id_us_oracle", "5522")
+                    )
+                elif node_name == "us-oracle":
+                    return (
+                        fetch_remote_stats("10.10.0.2", "id_us_oracle", "5522") or
+                        fetch_remote_stats("10.10.0.2", "id_ed25519", "5522")
+                    )
+                elif node_name == "us-racknerd":
+                    return fetch_remote_stats("10.10.0.3", "id_rn_amd", "5522")
+                return None
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-                f_us = ex.submit(fetch_remote_stats, "10.10.0.2", "id_us_oracle", "5522")
-                f_rn = ex.submit(fetch_remote_stats, "10.10.0.3", "id_rn_amd", "5522")
+                f_jp = ex.submit(_get_node_hw, "jp-oracle")
+                f_us = ex.submit(_get_node_hw, "us-oracle")
+                f_rn = ex.submit(_get_node_hw, "us-racknerd")
+                jp_stats = f_jp.result()
                 us_stats = f_us.result()
                 rn_stats = f_rn.result()
 

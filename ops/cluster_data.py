@@ -78,7 +78,14 @@ def get_cluster_data():
             "color": color,
             "status": status,
             "tasks_count": 0,
-            "hardware": hw
+            "hardware": hw,
+            "cpu_pct": hw.get("cpu_pct"),
+            "mem_total_mb": hw.get("mem_total_mb"),
+            "mem_used_mb": hw.get("mem_used_mb"),
+            "mem_pct": hw.get("mem_pct"),
+            "disk_total_gb": hw.get("disk_total_gb"),
+            "disk_used_gb": hw.get("disk_used_gb"),
+            "disk_pct": hw.get("disk_pct"),
         }
         node_map[nid] = info
         node_stats[nid] = info

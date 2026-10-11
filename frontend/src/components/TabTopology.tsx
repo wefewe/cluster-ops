@@ -76,9 +76,34 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {nodes.map((node) => {
             const isLeader = node.role === 'Leader';
-            const cpu = node.cpu_pct !== null ? `${node.cpu_pct}%` : '在线';
-            const memPct = node.mem_pct || 0;
-            const diskPct = node.disk_pct || 0;
+            const hw = node.hardware || {};
+            
+            // Extract telemetry with fallback to hw object
+            const cpuVal = (node.cpu_pct !== undefined && node.cpu_pct !== null) ? node.cpu_pct : (hw.cpu_pct !== undefined ? hw.cpu_pct : null);
+            const cpu = cpuVal !== null ? `${cpuVal}%` : '在线';
+            
+            const memPct = (node.mem_pct !== undefined && node.mem_pct !== null) ? node.mem_pct : (hw.mem_pct !== undefined ? hw.mem_pct : 0);
+            const memUsedMb = (node.mem_used_mb !== undefined && node.mem_used_mb !== null) ? node.mem_used_mb : (hw.mem_used_mb !== undefined ? hw.mem_used_mb : null);
+            const memTotalMb = (node.mem_total_mb !== undefined && node.mem_total_mb !== null) ? node.mem_total_mb : (hw.mem_total_mb !== undefined ? hw.mem_total_mb : null);
+            
+            const diskPct = (node.disk_pct !== undefined && node.disk_pct !== null) ? node.disk_pct : (hw.disk_pct !== undefined ? hw.disk_pct : 0);
+            const diskUsedGb = (node.disk_used_gb !== undefined && node.disk_used_gb !== null) ? node.disk_used_gb : (hw.disk_used_gb !== undefined ? hw.disk_used_gb : null);
+            const diskTotalGb = (node.disk_total_gb !== undefined && node.disk_total_gb !== null) ? node.disk_total_gb : (hw.disk_total_gb !== undefined ? hw.disk_total_gb : null);
+
+            // Format memory text nicely
+            let memText = '-';
+            if (memUsedMb !== null && memTotalMb !== null) {
+              if (memTotalMb >= 1000) {
+                memText = `${(memUsedMb / 1024).toFixed(1)} GB / ${(memTotalMb / 1024).toFixed(1)} GB (${memPct}%)`;
+              } else {
+                memText = `${memUsedMb} MB / ${memTotalMb} MB (${memPct}%)`;
+              }
+            }
+
+            let diskText = '-';
+            if (diskUsedGb !== null && diskTotalGb !== null) {
+              diskText = `${diskUsedGb} GB / ${diskTotalGb} GB (${diskPct}%)`;
+            }
 
             return (
               <div
@@ -102,6 +127,11 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
                       <span className="text-[10px] font-mono text-zinc-400">
                         {node.arch}
                       </span>
+                      {node.ip && (
+                        <span className="text-[10px] font-mono text-zinc-400">
+                          {node.ip}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -119,11 +149,11 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
                       <span className="flex items-center gap-1"><Cpu className="w-3 h-3" /> CPU 负载</span>
                       <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{cpu}</span>
                     </div>
-                    {node.cpu_pct !== null && (
+                    {cpuVal !== null && (
                       <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-indigo-500 rounded-full transition-all duration-500" 
-                          style={{ width: `${Math.min(100, Math.max(2, node.cpu_pct))}%` }} 
+                          style={{ width: `${Math.min(100, Math.max(2, Number(cpuVal)))}%` }} 
                         />
                       </div>
                     )}
@@ -133,15 +163,13 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
                   <div className="space-y-1">
                     <div className="flex justify-between text-[11px] text-zinc-500">
                       <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> 内存使用</span>
-                      <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">
-                        {node.mem_used_mb ? `${node.mem_used_mb}MB / ${node.mem_total_mb}MB (${memPct}%)` : '-'}
-                      </span>
+                      <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{memText}</span>
                     </div>
-                    {node.mem_pct !== null && (
+                    {memPct > 0 && (
                       <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
-                          style={{ width: `${Math.min(100, Math.max(2, memPct))}%` }} 
+                          style={{ width: `${Math.min(100, Math.max(2, Number(memPct)))}%` }} 
                         />
                       </div>
                     )}
@@ -151,15 +179,13 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
                   <div className="space-y-1">
                     <div className="flex justify-between text-[11px] text-zinc-500">
                       <span className="flex items-center gap-1"><HardDrive className="w-3 h-3" /> 系统根盘</span>
-                      <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">
-                        {node.disk_used_gb ? `${node.disk_used_gb}GB / ${node.disk_total_gb}GB (${diskPct}%)` : '-'}
-                      </span>
+                      <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">{diskText}</span>
                     </div>
-                    {node.disk_pct !== null && (
+                    {diskPct > 0 && (
                       <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-sky-500 rounded-full transition-all duration-500" 
-                          style={{ width: `${Math.min(100, Math.max(2, diskPct))}%` }} 
+                          style={{ width: `${Math.min(100, Math.max(2, Number(diskPct)))}%` }} 
                         />
                       </div>
                     )}
@@ -241,6 +267,42 @@ export const TabTopology: React.FC<TabTopologyProps> = ({ nodes, routes, summary
               onChange={e => setSearch(e.target.value)}
               className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-indigo-500"
             />
+
+            {/* Node Filter */}
+            <div className="flex rounded-xl bg-zinc-100 dark:bg-zinc-950 p-1 border border-zinc-200 dark:border-zinc-800 text-xs">
+              <button
+                onClick={() => setSelectedNode('all')}
+                className={`px-2 py-0.5 rounded-md font-medium transition ${
+                  selectedNode === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                全部节点
+              </button>
+              <button
+                onClick={() => setSelectedNode('jp-oracle')}
+                className={`px-2 py-0.5 rounded-md font-medium transition ${
+                  selectedNode === 'jp-oracle' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                🇯🇵 日本
+              </button>
+              <button
+                onClick={() => setSelectedNode('us-oracle')}
+                className={`px-2 py-0.5 rounded-md font-medium transition ${
+                  selectedNode === 'us-oracle' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                🇺🇸 凤凰城
+              </button>
+              <button
+                onClick={() => setSelectedNode('us-racknerd')}
+                className={`px-2 py-0.5 rounded-md font-medium transition ${
+                  selectedNode === 'us-racknerd' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                🟣 圣何塞
+              </button>
+            </div>
 
             <div className="flex rounded-xl bg-zinc-100 dark:bg-zinc-950 p-1 border border-zinc-200 dark:border-zinc-800 text-xs">
               <button
